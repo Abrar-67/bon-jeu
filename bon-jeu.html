@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bon Jeu — Memory Match</title>
+<style>
+  :root{
+    --turf-1:#0e5c33;
+    --turf-2:#136b3c;
+    --chalk:#f4f1ea;
+    --gold:#e8c25c;
+    --ink:#07160d;
+    --panel:#0f3d24;
+    --panel-line:#1c6e42;
+    --accent:#ff5a3c;
+    --sky:#63b3e6;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background:var(--ink);
+    font-family:'Trebuchet MS','Segoe UI',sans-serif;
+    color:var(--chalk);
+  }
+  body{
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh;
+    padding:24px 14px;
+    background:
+      radial-gradient(circle at 50% -10%, #123f24 0%, #07160d 60%);
+  }
+  #app{
+    width:100%;
+    max-width:640px;
+    display:flex; flex-direction:column; align-items:center;
+    gap:16px;
+  }
+
+  /* ---- Header ---- */
+  #titlebar{
+    display:flex; align-items:baseline; gap:10px;
+    font-family:'Georgia',serif; font-style:italic;
+  }
+  #titlebar h1{
+    margin:0; font-size:clamp(26px,5vw,38px);
+    color:var(--gold); letter-spacing:.5px;
+    text-shadow:0 3px 10px #000a;
+  }
+  #titlebar h1 span{color:var(--chalk);}
+  #subtitle{
+    font-style:normal; font-size:12px; letter-spacing:3px;
+    text-transform:uppercase; opacity:.6;
+  }
+
+  /* ---- Stat bar ---- */
+  #stats{
+    display:flex; gap:10px; width:100%; justify-content:center; flex-wrap:wrap;
+  }
+  .stat{
+    background:var(--panel);
+    border:2px solid var(--panel-line);
+    border-radius:10px;
+    padding:8px 18px;
+    text-align:center;
+    min-width:84px;
+  }
+  .stat .label{font-size:10px; letter-spacing:2px; text-transform:uppercase; opacity:.7;}
+  .stat .val{font-size:22px; color:var(--gold); font-weight:bold; font-variant-numeric:tabular-nums;}
+  .stat.streak-hot .val{color:var(--accent);}
+
+  /* ---- Difficulty select ---- */
+  #diff-row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .diff-btn{
+    background:var(--panel); border:2px solid var(--panel-line); color:var(--chalk);
+    padding:8px 16px; border-radius:20px; cursor:pointer; font-weight:bold; font-size:13px;
+    transition:.15s;
+  }
+  .diff-btn:hover{border-color:var(--gold);}
+  .diff-btn.selected{border-color:var(--gold); color:var(--gold); background:#123a24;}
+
+  /* ---- Board ---- */
+  #board{
+    display:grid;
+    gap:10px;
+    width:100%;
+    perspective:1000px;
+  }
+  .card{
+    position:relative;
+    aspect-ratio:3/4;
+    cursor:pointer;
+    transform-style:preserve-3d;
+    transition:transform .45s cubic-bezier(.2,.9,.3,1.15);
+  }
+  .card.flipped{transform:rotateY(180deg);}
+  .card.matched{
+    animation:matchPop .5s ease;
+    cursor:default;
+  }
+  .card.shake{animation:shakeNo .4s ease;}
+  @keyframes matchPop{
+    0%{transform:rotateY(180deg) scale(1);}
+    40%{transform:rotateY(180deg) scale(1.12);}
+    100%{transform:rotateY(180deg) scale(1);}
+  }
+  @keyframes shakeNo{
+    0%,100%{transform:rotateY(180deg) translateX(0);}
+    25%{transform:rotateY(180deg) translateX(-6px);}
+    75%{transform:rotateY(180deg) translateX(6px);}
+  }
+  .card-face{
+    position:absolute; inset:0;
+    backface-visibility:hidden;
+    border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .card-back{
+    background:
+      repeating-linear-gradient(45deg, var(--turf-1) 0 10px, var(--turf-2) 10px 20px);
+    border:2px solid var(--panel-line);
+    box-shadow:inset 0 0 0 3px #ffffff14;
+  }
+  .card-back::after{
+    content:'';
+    position:absolute; inset:8%;
+    border:2px solid var(--gold);
+    border-radius:8px;
+    opacity:.55;
+  }
+  .card-back-mark{
+    font-family:'Georgia',serif; font-style:italic; font-weight:bold;
+    color:var(--gold); opacity:.85; font-size:clamp(14px,4vw,22px);
+    text-shadow:0 2px 4px #000a;
+  }
+  .card-front{
+    background:var(--chalk);
+    transform:rotateY(180deg);
+    border:2px solid var(--gold);
+    flex-direction:column;
+  }
+  .card-matched-glow{
+    box-shadow:0 0 0 3px var(--gold), 0 0 18px 2px #e8c25c88;
+  }
+  .card canvas{width:70%; height:70%; display:block;}
+  .card-front .fname{
+    font-size:clamp(9px,2.4vw,12px);
+    font-weight:bold;
+    color:#0e2b52;
+    margin-top:2px;
+    text-align:center;
+    letter-spacing:.5px;
+  }
+
+  /* spark burst on match */
+  .spark{
+    position:absolute; inset:0; pointer-events:none;
+  }
+  .spark i{
+    position:absolute; top:50%; left:50%;
+    width:5px; height:5px; border-radius:50%;
+    background:var(--gold);
+    animation:sparkFly .6s ease-out forwards;
+  }
+  @keyframes sparkFly{
+    to{ transform:translate(var(--dx), var(--dy)) scale(0); opacity:0; }
+  }
+
+  /* ---- Controls ---- */
+  #controls{display:flex; gap:10px;}
+  .btn{
+    background:var(--accent); color:var(--chalk); border:none;
+    padding:12px 26px; font-size:15px; font-weight:bold;
+    border-radius:26px; cursor:pointer;
+    box-shadow:0 5px 0 #a83a25, 0 8px 16px #0006;
+    transition:transform .1s;
+  }
+  .btn:active{transform:translateY(3px); box-shadow:0 2px 0 #a83a25;}
+  .btn.ghost{
+    background:var(--panel); color:var(--chalk);
+    box-shadow:0 5px 0 #073019, 0 8px 16px #0006;
+    border:2px solid var(--panel-line);
+  }
+  .btn.ghost:active{transform:translateY(3px); box-shadow:0 2px 0 #073019;}
+
+  /* ---- Win overlay ---- */
+  #win-overlay{
+    position:fixed; inset:0;
+    background:#07160dee;
+    display:none; align-items:center; justify-content:center;
+    z-index:20; padding:20px;
+  }
+  #win-overlay.show{display:flex;}
+  #win-card{
+    background:var(--panel); border:2px solid var(--gold); border-radius:16px;
+    padding:32px 36px; text-align:center; max-width:420px;
+    box-shadow:0 20px 60px #000a;
+  }
+  #win-card h2{
+    font-family:'Georgia',serif; font-style:italic;
+    color:var(--gold); font-size:32px; margin:0 0 6px;
+  }
+  #win-card h2 span{color:var(--chalk);}
+  #win-card p{opacity:.85; line-height:1.5; margin:0 0 18px;}
+  #win-stats{display:flex; gap:10px; justify-content:center; margin-bottom:20px;}
+
+  @media (prefers-reduced-motion: reduce){
+    .card, .card.matched, .card.shake, .spark i{animation:none !important; transition:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="titlebar">
+    <h1>Bon <span>Jeu</span></h1>
+    <div id="subtitle">Memory Match</div>
+  </div>
+
+  <div id="diff-row">
+    <button class="diff-btn" data-size="4x3">Easy · 12</button>
+    <button class="diff-btn selected" data-size="4x4">Medium · 16</button>
+    <button class="diff-btn" data-size="6x4">Hard · 24</button>
+  </div>
+
+  <div id="stats">
+    <div class="stat"><div class="label">Time</div><div class="val" id="stat-time">0:00</div></div>
+    <div class="stat"><div class="label">Moves</div><div class="val" id="stat-moves">0</div></div>
+    <div class="stat"><div class="label">Pairs</div><div class="val" id="stat-pairs">0/8</div></div>
+    <div class="stat" id="streak-stat"><div class="label">Streak</div><div class="val" id="stat-streak">0</div></div>
+  </div>
+
+  <div id="board"></div>
+
+  <div id="controls">
+    <button class="btn" id="new-game-btn">New Game</button>
+    <button class="btn ghost" id="reshuffle-btn">Restart</button>
+  </div>
+</div>
+
+<div id="win-overlay">
+  <div id="win-card">
+    <h2>Full <span>Time!</span></h2>
+    <p id="win-text">You matched every pair.</p>
+    <div id="win-stats">
+      <div class="stat"><div class="label">Time</div><div class="val" id="win-time">0:00</div></div>
+      <div class="stat"><div class="label">Moves</div><div class="val" id="win-moves">0</div></div>
+      <div class="stat"><div class="label">Best Streak</div><div class="val" id="win-streak">0</div></div>
+    </div>
+    <button class="btn" id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- Original card icon set: football-world symbols, drawn from scratch (no borrowed art) ----------
+  const ICONS = [
+    { id:'ball',    label:'Match Ball',  draw:drawBall,    color:'#222' },
+    { id:'boot',    label:'Boot',        draw:drawBoot,    color:'#5a3b21' },
+    { id:'trophy',  label:'Trophy',      draw:drawTrophy,  color:'#c99a2e' },
+    { id:'goal',    label:'The Net',     draw:drawGoal,    color:'#1c6e42' },
+    { id:'whistle', label:'Whistle',     draw:drawWhistle, color:'#b8860b' },
+    { id:'card',    label:'Yellow Card', draw:drawCard,    color:'#e8c25c' },
+    { id:'shield',  label:'Crest',       draw:drawShield,  color:'#a30f2e' },
+    { id:'star',    label:'Star Player', draw:drawStar,    color:'#63b3e6' },
+    { id:'cone',    label:'Cone',        draw:drawCone,    color:'#ff5a3c' },
+    { id:'flag',    label:'Corner Flag', draw:drawFlag,    color:'#0e2b52' },
+    { id:'medal',   label:'Medal',       draw:drawMedal,   color:'#c99a2e' },
+    { id:'cup',     label:'Kit Number',  draw:drawNumber,  color:'#0e2b52' }
+  ];
+
+  const DIFFICULTIES = {
+    '4x3': { cols:4, rows:3, pairs:6 },
+    '4x4': { cols:4, rows:4, pairs:8 },
+    '6x4': { cols:6, rows:4, pairs:12 }
+  };
+
+  let diffKey = '4x4';
+  let board = [];         // array of {icon, matched, id}
+  let flipped = [];       // indices currently flipped, not yet resolved
+  let lockBoard = false;
+  let moves = 0, pairsFound = 0, totalPairs = 8;
+  let streak = 0, bestStreak = 0;
+  let timerInterval = null, secondsElapsed = 0, timerStarted = false;
+
+  const boardEl = document.getElementById('board');
+  const statTime = document.getElementById('stat-time');
+  const statMoves = document.getElementById('stat-moves');
+  const statPairs = document.getElementById('stat-pairs');
+  const statStreak = document.getElementById('stat-streak');
+  const streakStatEl = document.getElementById('streak-stat');
+  const winOverlay = document.getElementById('win-overlay');
+
+  function fmtTime(s){
+    const m = Math.floor(s/60), sec = s%60;
+    return m + ':' + String(sec).padStart(2,'0');
+  }
+
+  function startTimer(){
+    if(timerStarted) return;
+    timerStarted = true;
+    timerInterval = setInterval(()=>{
+      secondsElapsed++;
+      statTime.textContent = fmtTime(secondsElapsed);
+    }, 1000);
+  }
+  function stopTimer(){
+    clearInterval(timerInterval);
+    timerStarted = false;
+  }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function buildBoard(){
+    const d = DIFFICULTIES[diffKey];
+    totalPairs = d.pairs;
+    const chosen = shuffle(ICONS.slice()).slice(0, d.pairs);
+    let deck = [];
+    chosen.forEach((icon, i)=>{
+      deck.push({ icon, pairId:i, matched:false });
+      deck.push({ icon, pairId:i, matched:false });
+    });
+    deck = shuffle(deck);
+    board = deck;
+
+    boardEl.style.gridTemplateColumns = `repeat(${d.cols}, 1fr)`;
+    boardEl.innerHTML = '';
+
+    board.forEach((cell, idx)=>{
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.idx = idx;
+
+      const back = document.createElement('div');
+      back.className = 'card-face card-back';
+      const mark = document.createElement('div');
+      mark.className = 'card-back-mark';
+      mark.textContent = 'BJ';
+      back.appendChild(mark);
+
+      const front = document.createElement('div');
+      front.className = 'card-face card-front';
+      const c = document.createElement('canvas');
+      c.width = 90; c.height = 90;
+      front.appendChild(c);
+      const fname = document.createElement('div');
+      fname.className = 'fname';
+      fname.textContent = cell.icon.label;
+      front.appendChild(fname);
+
+      card.appendChild(back);
+      card.appendChild(front);
+      boardEl.appendChild(card);
+
+      const cctx = c.getContext('2d');
+      cctx.translate(45,45);
+      cell.icon.draw(cctx, cell.icon.color);
+
+      card.addEventListener('click', ()=>onCardClick(idx, card));
+    });
+  }
+
+  function resetStats(){
+    moves = 0; pairsFound = 0; streak = 0; bestStreak = 0;
+    secondsElapsed = 0; stopTimer();
+    statTime.textContent = '0:00';
+    statMoves.textContent = '0';
+    statPairs.textContent = `0/${totalPairs}`;
+    statStreak.textContent = '0';
+    streakStatEl.classList.remove('streak-hot');
+    flipped = [];
+    lockBoard = false;
+  }
+
+  function newGame(){
+    resetStats();
+    buildBoard();
+    winOverlay.classList.remove('show');
+  }
+
+  function onCardClick(idx, cardEl){
+    if(lockBoard) return;
+    if(board[idx].matched) return;
+    if(flipped.some(f=>f.idx === idx)) return;
+
+    startTimer();
+    cardEl.classList.add('flipped');
+    flipped.push({ idx, el:cardEl });
+
+    if(flipped.length === 2){
+      moves++;
+      statMoves.textContent = moves;
+      lockBoard = true;
+      const [a,b] = flipped;
+      const isMatch = board[a.idx].pairId === board[b.idx].pairId;
+
+      if(isMatch){
+        setTimeout(()=>{
+          board[a.idx].matched = true;
+          board[b.idx].matched = true;
+          a.el.classList.add('matched');
+          b.el.classList.add('matched');
+          a.el.querySelector('.card-front').classList.add('card-matched-glow');
+          b.el.querySelector('.card-front').classList.add('card-matched-glow');
+          burstSpark(a.el);
+          burstSpark(b.el);
+
+          pairsFound++;
+          streak++;
+          bestStreak = Math.max(bestStreak, streak);
+          statPairs.textContent = `${pairsFound}/${totalPairs}`;
+          statStreak.textContent = streak;
+          streakStatEl.classList.toggle('streak-hot', streak >= 3);
+
+          flipped = [];
+          lockBoard = false;
+
+          if(pairsFound === totalPairs){
+            setTimeout(showWin, 500);
+          }
+        }, 420);
+      } else {
+        streak = 0;
+        statStreak.textContent = '0';
+        streakStatEl.classList.remove('streak-hot');
+        setTimeout(()=>{
+          a.el.classList.add('shake');
+          b.el.classList.add('shake');
+          setTimeout(()=>{
+            a.el.classList.remove('flipped','shake');
+            b.el.classList.remove('flipped','shake');
+            flipped = [];
+            lockBoard = false;
+          }, 400);
+        }, 500);
+      }
+    }
+  }
+
+  function burstSpark(cardEl){
+    const spark = document.createElement('div');
+    spark.className = 'spark';
+    const count = 10;
+    for(let i=0;i<count;i++){
+      const p = document.createElement('i');
+      const angle = (Math.PI*2*i)/count + Math.random()*0.3;
+      const dist = 30 + Math.random()*20;
+      p.style.setProperty('--dx', Math.cos(angle)*dist + 'px');
+      p.style.setProperty('--dy', Math.sin(angle)*dist + 'px');
+      p.style.animationDelay = (Math.random()*0.05) + 's';
+      spark.appendChild(p);
+    }
+    cardEl.appendChild(spark);
+    setTimeout(()=>spark.remove(), 700);
+  }
+
+  function showWin(){
+    stopTimer();
+    document.getElementById('win-time').textContent = fmtTime(secondsElapsed);
+    document.getElementById('win-moves').textContent = moves;
+    document.getElementById('win-streak').textContent = bestStreak;
+    const efficiency = moves <= totalPairs * 1.4 ? 'A flawless read of the pitch.' :
+                        moves <= totalPairs * 2 ? 'Solid game management.' :
+                        'A hard-fought comeback.';
+    document.getElementById('win-text').textContent = `${totalPairs} pairs matched in ${moves} moves. ${efficiency}`;
+    winOverlay.classList.add('show');
+  }
+
+  // ---------- Icon drawing functions (all original, canvas-drawn) ----------
+  function drawBall(ctx){
+    ctx.beginPath(); ctx.arc(0,0,28,0,Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#222'; ctx.stroke();
+    ctx.fillStyle = '#222';
+    for(let i=0;i<5;i++){
+      const a = -Math.PI/2 + i*(Math.PI*2/5);
+      ctx.beginPath();
+      ctx.arc(Math.cos(a)*11, Math.sin(a)*11, 5.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(0,0,5.5,0,Math.PI*2); ctx.fill();
+  }
+  function drawBoot(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(-22,10);
+    ctx.quadraticCurveTo(-24,-14,-6,-16);
+    ctx.lineTo(10,-16);
+    ctx.quadraticCurveTo(22,-16,24,-4);
+    ctx.quadraticCurveTo(26,8,14,12);
+    ctx.lineTo(-22,12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    for(let i=-14;i<8;i+=7){
+      ctx.beginPath(); ctx.arc(i,-13,1.6,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = '#111';
+    ctx.fillRect(-24,10,50,5);
+    ctx.restore();
+  }
+  function drawTrophy(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(-14,-20); ctx.lineTo(14,-20);
+    ctx.lineTo(11,4); ctx.quadraticCurveTo(0,14,-11,4);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(-20,-16,7,Math.PI*0.3,Math.PI*1.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(20,-16,7,Math.PI*1.4,Math.PI*2.7); ctx.stroke();
+    ctx.fillRect(-4,14,8,8);
+    ctx.fillRect(-12,22,24,5);
+    ctx.restore();
+  }
+  function drawGoal(ctx, color){
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 3;
+    ctx.strokeRect(-24,-18,48,34);
+    ctx.lineWidth = 1; ctx.strokeStyle = color+'aa';
+    for(let x=-24;x<=24;x+=8){ ctx.beginPath(); ctx.moveTo(x,-18); ctx.lineTo(x,16); ctx.stroke(); }
+    for(let y=-18;y<=16;y+=8){ ctx.beginPath(); ctx.moveTo(-24,y); ctx.lineTo(24,y); ctx.stroke(); }
+    ctx.restore();
+  }
+  function drawWhistle(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(-4,0,16,11,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillRect(10,-5,16,10);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-4,0,5,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#00000055'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(-4,-11); ctx.lineTo(-4,11); ctx.stroke();
+    ctx.restore();
+  }
+  function drawCard(ctx, color){
+    ctx.save();
+    ctx.rotate(-0.15);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#00000033'; ctx.lineWidth = 2;
+    roundRect(ctx,-16,-22,32,44,4);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  function drawShield(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0,-22);
+    ctx.lineTo(18,-14);
+    ctx.lineTo(18,4);
+    ctx.quadraticCurveTo(18,20,0,24);
+    ctx.quadraticCurveTo(-18,20,-18,4);
+    ctx.lineTo(-18,-14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0,-2,7,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  function drawStar(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for(let i=0;i<10;i++){
+      const r = i%2===0 ? 24 : 10;
+      const a = -Math.PI/2 + i*Math.PI/5;
+      const x = Math.cos(a)*r, y = Math.sin(a)*r;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawCone(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0,-24); ctx.lineTo(14,18); ctx.lineTo(-14,18);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-11,4,22,5);
+    ctx.fillRect(-16,16,32,6);
+    ctx.restore();
+  }
+  function drawFlag(ctx, color){
+    ctx.save();
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-14,24); ctx.lineTo(-14,-24); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(-14,-24); ctx.lineTo(14,-16); ctx.lineTo(-14,-8);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawMedal(ctx, color){
+    ctx.save();
+    ctx.strokeStyle = '#63b3e6'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(-10,-22); ctx.lineTo(-2,2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10,-22); ctx.lineTo(2,2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,10,15,0,Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = '#00000044'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(0,3); ctx.lineTo(3,9); ctx.lineTo(-3,9); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawNumber(ctx, color){
+    ctx.save();
+    ctx.fillStyle = color;
+    roundRect(ctx,-18,-22,36,44,6);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 30px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('7', 0, 2);
+    ctx.restore();
+  }
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ---------- Controls ----------
+  document.querySelectorAll('.diff-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('selected'));
+      btn.classList.add('selected');
+      diffKey = btn.dataset.size;
+      newGame();
+    });
+  });
+  document.getElementById('new-game-btn').addEventListener('click', newGame);
+  document.getElementById('reshuffle-btn').addEventListener('click', newGame);
+  document.getElementById('play-again-btn').addEventListener('click', newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>
